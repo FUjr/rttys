@@ -262,6 +262,7 @@ func apiStart(br *broker) {
 			Bound       bool   `json:"bound"`
 			Online      bool   `json:"online"`
 			Proto       uint8  `json:"proto"`
+			Remark	    *string `json:"remark"`
 		}
 
 		db, err := instanceDB(cfg.DB)
@@ -272,7 +273,7 @@ func apiStart(br *broker) {
 		}
 		defer db.Close()
 
-		sql := "SELECT id, description, username FROM device"
+		sql := "SELECT d.id, d.description, d.username, r.remark FROM device d LEFT JOIN remarks r ON d.id = r.id"
 
 		if cfg.LocalAuth || !isLocalRequest(c) {
 			username := getLoginUsername(c)
@@ -299,8 +300,9 @@ func apiStart(br *broker) {
 			id := ""
 			desc := ""
 			username := ""
+			var remark *string
 
-			err := rows.Scan(&id, &desc, &username)
+			err := rows.Scan(&id, &desc, &username, &remark)
 			if err != nil {
 				log.Error().Msg(err.Error())
 				break
@@ -310,6 +312,7 @@ func apiStart(br *broker) {
 				ID:          id,
 				Description: desc,
 				Bound:       username != "",
+				Remark:      remark,
 			}
 
 			if dev, ok := br.devices[id]; ok {
@@ -649,6 +652,52 @@ func apiStart(br *broker) {
 			c.DataFromReader(http.StatusOK, -1, "application/octet-stream", fp.reader, nil)
 			br.fileProxy.Delete(sid)
 		}
+	})
+
+	r.POST("/setRemark", func(c *gin.Context) {
+		isAdmin := false
+		username := ""
+		var result sql.Result
+
+		username = getLoginUsername(c)
+		if (cfg.LocalAuth && isLocalRequest(c)) || isAdminUsername(cfg, username) {
+			isAdmin = true
+		} 
+		
+
+		type remarkData struct {
+			Remark string   `json:"remark"`
+			Device  string `json:"device"`
+		}
+		data := remarkData{}
+		err := c.BindJSON(&data)
+		db, err := instanceDB(cfg.DB)
+		if err != nil {
+			log.Error().Msg(err.Error())
+			return
+		}
+		
+		defer db.Close()
+		
+		// Ensure the device row exists in the remarks table
+		result, err = db.Exec("INSERT OR IGNORE INTO remarks (id, remark) SELECT ?, ? WHERE EXISTS (SELECT 1 FROM device WHERE id = ?)", data.Device, "", data.Device)
+		
+		if err != nil {
+			log.Error().Msg(err.Error())
+			return
+		}
+		sql := "UPDATE remarks SET remark = ? WHERE id = ?"
+		if !isAdmin {
+			sql += " AND id IN (SELECT id FROM device WHERE username = ?)"
+			result, err = db.Exec(sql, data.Remark, data.Device, username)
+		} else {
+			result, err = db.Exec(sql, data.Remark, data.Device)
+		}
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"result": result})
 	})
 
 	r.NoRoute(func(c *gin.Context) {

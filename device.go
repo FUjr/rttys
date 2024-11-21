@@ -162,6 +162,7 @@ func (dev *device) UpdateDb() {
 	db.QueryRow("SELECT COUNT(*) FROM device WHERE id = ?", dev.id).Scan(&cnt)
 	if cnt == 0 {
 		_, err = db.Exec("INSERT INTO device values(?,?,?,?)", dev.id, dev.desc, time.Now(), "")
+		_, err = db.Exec("INSERT INTO remarks values(?,?)", dev.id, "")
 	} else {
 		_, err = db.Exec("UPDATE device SET description = ?, online = ? WHERE id = ?", dev.desc, time.Now(), dev.id)
 	}
