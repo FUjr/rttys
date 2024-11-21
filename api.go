@@ -618,12 +618,14 @@ func apiStart(br *broker) {
 		for _, devid := range data.Devices {
 			if _, ok := br.devices[devid]; !ok {
 				sql := fmt.Sprintf("DELETE FROM device WHERE id = '%s'", devid)
-
+				remarkSql := fmt.Sprintf("DELETE FROM remarks WHERE id = '%s'", devid)
 				if username != "" {
 					sql += fmt.Sprintf(" AND username = '%s'", username)
+					remarkSql += fmt.Sprintf(" AND id IN (SELECT id FROM device WHERE username = '%s')", username)
 				}
 
 				db.Exec(sql)
+				db.Exec(remarkSql)
 			}
 		}
 
