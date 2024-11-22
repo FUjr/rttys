@@ -4,6 +4,7 @@
     <Input style="margin-right: 4px;width:200px" v-model="filterString" search @input="handleSearch" :placeholder="$t('Please enter the filter key...')"/>
     <Button style="margin-right: 4px;" @click="showCmdForm" type="primary" :disabled="cmdStatus.execing > 0">{{ $t('Execute command') }}</Button>
     <Button v-if="isadmin" style="margin-right: 4px;" @click="showBindForm" type="primary">{{ $t('Bind user') }}</Button>
+    <Button style="margin-right: 4px;" @click="navigateToUser" type="primary">{{ isadmin ? $t('User Management') : $t('Change Password') }}</Button>
     <Tooltip :content="$t('Delete offline devices')">
       <Button @click="deleteDevices" type="primary">{{ $t('Delete') }}</Button>
     </Tooltip>
@@ -249,6 +250,9 @@ export default {
     }
   },
   methods: {
+    navigateToUser() {
+      this.$router.push('/User');
+    },
     parseIPv4(x) {
       if (!x.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/))
         return null;

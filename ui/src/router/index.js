@@ -3,6 +3,7 @@ import VueRouter from 'vue-router'
 import Login from '../views/Login.vue'
 import Home from '../views/Home.vue'
 import Rtty from '../views/Rtty.vue'
+import User from '../views/User.vue'
 
 Vue.use(VueRouter)
 
@@ -22,6 +23,11 @@ const routes = [
     name: 'Rtty',
     component: Rtty,
     props: true
+  },
+  {
+    path: '/User',
+    name: 'User',
+    component: User
   }
 ];
 
