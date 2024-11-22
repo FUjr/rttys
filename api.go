@@ -651,6 +651,148 @@ func apiStart(br *broker) {
 		}
 	})
 
+	r.GET("/admins", func(c *gin.Context) {
+		loginUsername := getLoginUsername(c)
+		isAdmin := isAdminUsername(cfg, loginUsername)
+
+		if cfg.LocalAuth || !isLocalRequest(c) {
+			if !isAdmin {
+				c.Status(http.StatusUnauthorized)
+				return
+			}
+		}
+
+		users := []string{}
+
+		db, err := instanceDB(cfg.DB)
+		if err != nil {
+			log.Error().Msg(err.Error())
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		defer db.Close()
+		rows, err := db.Query("SELECT username FROM account WHERE admin > 0")
+		if err != nil {
+			log.Error().Msg(err.Error())
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+
+		for rows.Next() {
+			username := ""
+			err := rows.Scan(&username)
+			if err != nil {
+				log.Error().Msg(err.Error())
+				break
+			}
+
+			if isAdmin && username == loginUsername {
+				continue
+			}
+
+			users = append(users, username)
+		}
+
+		c.JSON(http.StatusOK, gin.H{"admins": users})
+	})
+
+	// This endpoint allows for user management. Admin users can add, update, or remove users, while non-admin users can only update their own password.
+	r.POST("/User", func(c *gin.Context) {
+		type User struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+			SetAdmin bool `json:"setadmin"`
+			Remove bool `json:"remove"`
+			Func int `json:"func"` // 0: change password, 1: update user, 2: add user 3: remove user
+		}
+
+		data := User{}
+		err := c.BindJSON(&data)
+		user_exist := 0
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		isadmin := false
+		login_username := getLoginUsername(c)
+		if cfg.LocalAuth && isLocalRequest(c) {
+			isadmin = true
+		} else {
+			isadmin = isAdminUsername(cfg, login_username)
+		}
+		if !isadmin && data.Func != 0 {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+		db, err := instanceDB(cfg.DB)
+		defer db.Close()
+		switch data.Func {
+		case 0:
+			if login_username == "" || data.Password == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+				return
+			}
+			sql := "UPDATE account SET password = ? WHERE username = ?"
+			_,err = db.Exec(sql, data.Password, login_username)
+		case 1:
+			if data.Username == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+				return
+			}
+			sql := "SELECT COUNT(*) FROM account WHERE username = ?"
+			db.QueryRow(sql, data.Username).Scan(&user_exist)
+			if user_exist == 0 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "User not exist"})
+				return
+			}
+			setadmin := 0
+			if data.SetAdmin {
+				setadmin = 1
+			}
+			if data.Password == "" {
+				sql := "UPDATE account SET admin = ? WHERE username = ?"
+				_,err = db.Exec(sql, setadmin, data.Username)
+			} else {
+				sql := "UPDATE account SET password = ? , admin = ? WHERE username = ?"
+				_,err = db.Exec(sql, data.Password, data.Username) 
+			}
+		case 2:
+			if data.Username == "" || data.Password == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+				return
+			}
+			sql := "SELECT COUNT(*) FROM account WHERE username = ?"
+			db.QueryRow(sql, data.Username).Scan(&user_exist)
+			if user_exist != 0 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "User already exist"})
+				return
+			}
+			sql = "INSERT INTO account values(?,?,?)" // username, password, admin
+			_,err = db.Exec(sql, data.Username, data.Password, data.SetAdmin) 
+		case 3:
+			if data.Username == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+				return
+			}
+			sql := "SELECT COUNT(*) FROM account WHERE username = ?"
+			db.QueryRow(sql, data.Username).Scan(&user_exist)
+			if user_exist == 0 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
+				return
+			}
+			sql = "DELETE FROM account WHERE username = ?"
+			_,err = db.Exec(sql, data.Username)
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+			return
+		}
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		} else {
+			c.JSON(http.StatusOK, gin.H{"success": true})
+		}
+	})
+
 	r.NoRoute(func(c *gin.Context) {
 		fs, _ := fs.Sub(staticFs, "ui/dist")
 
