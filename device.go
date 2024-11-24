@@ -161,8 +161,13 @@ func (dev *device) UpdateDb() {
 
 	db.QueryRow("SELECT COUNT(*) FROM device WHERE id = ?", dev.id).Scan(&cnt)
 	if cnt == 0 {
-		_, err = db.Exec("INSERT INTO device values(?,?,?,?)", dev.id, dev.desc, time.Now(), "")
-		_, err = db.Exec("INSERT INTO remarks values(?,?)", dev.id, "")
+		auto_bind := ""
+		if dev.br.cfg.AutoBind && strings.Contains(dev.id, "_") && dev.id[0] != '_' {
+			index := strings.Index(dev.id, "_")
+			auto_bind = dev.id[:index]
+			log.Info().Msgf("Auto bind device: %s to User: %s", dev.id, auto_bind)
+		}
+		_, err = db.Exec("INSERT INTO device values(?,?,?,?)", dev.id, dev.desc, time.Now(), auto_bind)
 	} else {
 		_, err = db.Exec("UPDATE device SET description = ?, online = ? WHERE id = ?", dev.desc, time.Now(), dev.id)
 	}
