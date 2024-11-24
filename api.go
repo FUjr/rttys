@@ -368,8 +368,11 @@ func apiStart(br *broker) {
 		if httpLogin(cfg, &creds) {
 			sid := utils.GenUniqueID("http")
 			httpSessions.Set(sid, creds.Username, 0)
-
-			c.SetCookie("sid", sid, 0, "", "", false, true)
+			ckDomain := ""
+			if cfg.CookieDomain != "" {
+				ckDomain = cfg.CookieDomain
+			}
+			c.SetCookie("sid", sid, 0, "", ckDomain, false, true)
 
 			c.JSON(http.StatusOK, gin.H{
 				"sid":      sid,

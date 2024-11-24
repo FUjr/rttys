@@ -345,11 +345,14 @@ func httpProxyRedirect(br *broker, c *gin.Context) {
 	sid = utils.GenUniqueID("http-proxy")
 
 	httpProxySessions.Store(sid, make(chan struct{}))
-
-	c.SetCookie("rtty-http-sid", sid, 0, "", "", false, true)
-	c.SetCookie("rtty-http-devid", devid, 0, "", "", false, true)
-	c.SetCookie("rtty-http-proto", proto, 0, "", "", false, true)
-	c.SetCookie("rtty-http-destaddr", addr, 0, "", "", false, true)
+	ckDomain := ""
+	if cfg.CookieDomain != "" {
+		ckDomain = cfg.CookieDomain
+	}
+	c.SetCookie("rtty-http-sid", sid, 0, "", ckDomain, false, true)
+	c.SetCookie("rtty-http-devid", devid, 0, "", ckDomain, false, true)
+	c.SetCookie("rtty-http-proto", proto, 0, "", ckDomain, false, true)
+	c.SetCookie("rtty-http-destaddr", addr, 0, "", ckDomain, false, true)
 
 	c.Redirect(http.StatusFound, location)
 }
