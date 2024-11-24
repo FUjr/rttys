@@ -90,5 +90,8 @@
   "Please input the username": "Please input the username",
   "Success!" : "Success!",
   "Fail!" : "Fail!",
-  "Return": "Return"
+  "Return": "Return",
+  "Set Remark": "Set Remark",
+  "Remark": "Remark"
+
 }

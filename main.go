@@ -34,6 +34,8 @@ func initDb(cfg *config.Config) error {
 
 	_, err = db.Exec("CREATE TABLE IF NOT EXISTS device(id VARCHAR(512) PRIMARY KEY NOT NULL, description TEXT NOT NULL, online DATETIME NOT NULL, username TEXT NOT NULL)")
 
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS remarks(id VARCHAR(512) PRIMARY KEY NOT NULL, remark TEXT NOT NULL)")
+	
 	return err
 }
 

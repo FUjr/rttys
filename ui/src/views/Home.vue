@@ -27,6 +27,10 @@
       <template v-slot:uptime="{ row }">
         <span v-if="row.online">{{ row.uptime  | formatTime }}</span>
       </template>
+      <template v-slot:remark="{ row }">
+        <Input v-model="row.remark" style="width: 100px"/>
+        <Button  type="warning" size="small" style="vertical-align: bottom;" @click="setRemark(row.id, row.remark)">{{ $t('Set Remark') }}</Button>
+      </template>
       <template v-slot:action="{ row }">
         <Button v-if="isadmin && row.bound" type="warning" size="small" style="vertical-align: bottom;" @click="unBindUser(row.id)">{{ $t('Unbind') }}</Button>
         <Tooltip v-if="row.online" placement="top" :content="$t('Access your device\'s Shell')">
@@ -169,6 +173,10 @@ export default {
           title: this.$t('Description'),
           key: 'description',
           tooltip: true
+        },
+        {
+          title: this.$t('Remark'),
+          slot: 'remark'
         },
         {
           slot: 'action',
@@ -322,6 +330,15 @@ export default {
       }).then(() => {
         this.getDevices();
         this.$Message.success(this.$t('Unbind success'));
+      });
+    },
+    setRemark(id, remark) {
+      this.axios.post('/setRemark', {
+        device: id,
+        remark: remark
+      }).then(() => {
+        this.getDevices();
+        this.$Message.success(this.$t('Update success'));
       });
     },
     deleteDevices() {

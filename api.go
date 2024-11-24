@@ -255,13 +255,14 @@ func apiStart(br *broker) {
 
 	authorized.GET("/devs", func(c *gin.Context) {
 		type DeviceInfo struct {
-			ID          string `json:"id"`
-			Connected   uint32 `json:"connected"`
-			Uptime      uint32 `json:"uptime"`
-			Description string `json:"description"`
-			Bound       bool   `json:"bound"`
-			Online      bool   `json:"online"`
-			Proto       uint8  `json:"proto"`
+			ID          string  `json:"id"`
+			Connected   uint32  `json:"connected"`
+			Uptime      uint32  `json:"uptime"`
+			Description string  `json:"description"`
+			Bound       bool    `json:"bound"`
+			Online      bool    `json:"online"`
+			Proto       uint8   `json:"proto"`
+			Remark      *string `json:"remark"`
 		}
 
 		db, err := instanceDB(cfg.DB)
@@ -272,7 +273,7 @@ func apiStart(br *broker) {
 		}
 		defer db.Close()
 
-		sql := "SELECT id, description, username FROM device"
+		sql := "SELECT d.id, d.description, d.username, r.remark FROM device d LEFT JOIN remarks r ON d.id = r.id"
 
 		if cfg.LocalAuth || !isLocalRequest(c) {
 			username := getLoginUsername(c)
@@ -299,8 +300,9 @@ func apiStart(br *broker) {
 			id := ""
 			desc := ""
 			username := ""
+			var remark *string
 
-			err := rows.Scan(&id, &desc, &username)
+			err := rows.Scan(&id, &desc, &username, &remark)
 			if err != nil {
 				log.Error().Msg(err.Error())
 				break
@@ -310,6 +312,7 @@ func apiStart(br *broker) {
 				ID:          id,
 				Description: desc,
 				Bound:       username != "",
+				Remark:      remark,
 			}
 
 			if dev, ok := br.devices[id]; ok {
@@ -615,12 +618,14 @@ func apiStart(br *broker) {
 		for _, devid := range data.Devices {
 			if _, ok := br.devices[devid]; !ok {
 				sql := fmt.Sprintf("DELETE FROM device WHERE id = '%s'", devid)
-
+				remarkSql := fmt.Sprintf("DELETE FROM remarks WHERE id = '%s'", devid)
 				if username != "" {
 					sql += fmt.Sprintf(" AND username = '%s'", username)
+					remarkSql += fmt.Sprintf(" AND id IN (SELECT id FROM device WHERE username = '%s')", username)
 				}
 
 				db.Exec(sql)
+				db.Exec(remarkSql)
 			}
 		}
 
@@ -649,6 +654,51 @@ func apiStart(br *broker) {
 			c.DataFromReader(http.StatusOK, -1, "application/octet-stream", fp.reader, nil)
 			br.fileProxy.Delete(sid)
 		}
+	})
+
+	r.POST("/setRemark", func(c *gin.Context) {
+		isAdmin := false
+		username := ""
+		var result sql.Result
+
+		username = getLoginUsername(c)
+		if (cfg.LocalAuth && isLocalRequest(c)) || isAdminUsername(cfg, username) {
+			isAdmin = true
+		}
+
+		type remarkData struct {
+			Remark string `json:"remark"`
+			Device string `json:"device"`
+		}
+		data := remarkData{}
+		err := c.BindJSON(&data)
+		db, err := instanceDB(cfg.DB)
+		if err != nil {
+			log.Error().Msg(err.Error())
+			return
+		}
+
+		defer db.Close()
+
+		// Ensure the device row exists in the remarks table
+		result, err = db.Exec("INSERT OR IGNORE INTO remarks (id, remark) SELECT ?, ? WHERE EXISTS (SELECT 1 FROM device WHERE id = ?)", data.Device, "", data.Device)
+
+		if err != nil {
+			log.Error().Msg(err.Error())
+			return
+		}
+		sql := "UPDATE remarks SET remark = ? WHERE id = ?"
+		if !isAdmin {
+			sql += " AND id IN (SELECT id FROM device WHERE username = ?)"
+			result, err = db.Exec(sql, data.Remark, data.Device, username)
+		} else {
+			result, err = db.Exec(sql, data.Remark, data.Device)
+		}
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"result": result})
 	})
 
 	r.GET("/admins", func(c *gin.Context) {
@@ -701,9 +751,9 @@ func apiStart(br *broker) {
 		type User struct {
 			Username string `json:"username"`
 			Password string `json:"password"`
-			SetAdmin bool `json:"setadmin"`
-			Remove bool `json:"remove"`
-			Func int `json:"func"` // 0: change password, 1: update user, 2: add user 3: remove user
+			SetAdmin bool   `json:"setadmin"`
+			Remove   bool   `json:"remove"`
+			Func     int    `json:"func"` // 0: change password, 1: update user, 2: add user 3: remove user
 		}
 
 		data := User{}
@@ -733,7 +783,7 @@ func apiStart(br *broker) {
 				return
 			}
 			sql := "UPDATE account SET password = ? WHERE username = ?"
-			_,err = db.Exec(sql, data.Password, login_username)
+			_, err = db.Exec(sql, data.Password, login_username)
 		case 1:
 			if data.Username == "" {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
@@ -751,10 +801,10 @@ func apiStart(br *broker) {
 			}
 			if data.Password == "" {
 				sql := "UPDATE account SET admin = ? WHERE username = ?"
-				_,err = db.Exec(sql, setadmin, data.Username)
+				_, err = db.Exec(sql, setadmin, data.Username)
 			} else {
 				sql := "UPDATE account SET password = ? , admin = ? WHERE username = ?"
-				_,err = db.Exec(sql, data.Password, data.Username) 
+				_, err = db.Exec(sql, data.Password, data.Username)
 			}
 		case 2:
 			if data.Username == "" || data.Password == "" {
@@ -768,7 +818,7 @@ func apiStart(br *broker) {
 				return
 			}
 			sql = "INSERT INTO account values(?,?,?)" // username, password, admin
-			_,err = db.Exec(sql, data.Username, data.Password, data.SetAdmin) 
+			_, err = db.Exec(sql, data.Username, data.Password, data.SetAdmin)
 		case 3:
 			if data.Username == "" {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
@@ -781,7 +831,7 @@ func apiStart(br *broker) {
 				return
 			}
 			sql = "DELETE FROM account WHERE username = ?"
-			_,err = db.Exec(sql, data.Username)
+			_, err = db.Exec(sql, data.Username)
 		default:
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 			return

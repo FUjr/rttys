@@ -91,5 +91,7 @@
   "Please input the username": "请输入用户名",
   "Success!" : "成功!",
   "Fail!" : "失败!",
-  "Return": "返回"
+  "Return": "返回",
+  "Set Remark": "设置备注",
+  "Remark": "备注"
 }
